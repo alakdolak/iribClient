@@ -1,0 +1,210 @@
+<template>
+  <div class="container">
+    <div class="row justify-content-center">
+      <div class="col-sm-10">
+        <div class="card">
+          <div class="card-header">
+            <h4>
+              <i class="fa fa-cog"></i>
+              Setting
+            </h4>
+          </div>
+          <div class="card-body p-4">
+            <div class="row form-group">
+              <label class="label">Maximum number of activated news : </label>
+              <input type="number" min="5" max="50" class="form-control" v-model="maxActives" @change="updateModule">
+            </div>
+            <div class="row form-group">
+              <label for="" class="label">Adding news mode:</label>
+              <select v-model="newsAutomatic" class="form-control form-control-lg" @change="updateModule">
+                <option :value="1">Automatically add news to module</option>
+                <option :value="0">Add manually</option>
+              </select>
+            </div>
+            <div class="row form-group" v-if="newsAutomatic">
+              <label for="" class="label">Categories:</label>
+              <multiselect v-model="selectedCategories"
+                           @tag="updateModule"
+                           placeholder="select Categories"
+                           label="englishTitle"
+                           track-by="id"
+                           :options="categories"
+                           :multiple="true"
+                           :taggable="true"
+                           :hideSelected="true"
+                           @input="categoryCalledUpdateModule"
+                           class="input-lg"
+              ></multiselect>
+            </div>
+            <div class="row form-group" v-if="newsAutomatic">
+              <label for="" class="label">Sub Categories:</label>
+              <multiselect v-model="selectedSubCategories"
+                           @tag="updateModule"
+                           placeholder="select Sub Categories"
+                           label="englishTitle"
+                           track-by="id"
+                           :options="subCategories"
+                           :multiple="true"
+                           :taggable="true"
+                           :hideSelected="true"
+                           @input="updateModule"
+                           class="input-lg"
+              ></multiselect>
+            </div>
+            <div class="row form-group">
+              <label class="label">Activating mode : </label>
+              <select class="form-control form-control-lg" v-model="automatic" @change="updateModule">
+                <option value="true">Automatically activate added news</option>
+                <option value="false">activate Manually</option>
+              </select>
+            </div>
+            <div class="row form-group" v-if="automatic === 'true'">
+              <label class="label">Activation replacement policy: </label>
+              <select class="form-control form-control-lg" v-model="replaceMode" @change="updateModule">
+                <option v-for="option in replace_options" :value="option.value">{{option.text}}</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script>
+  import Multiselect from 'vue-multiselect'
+
+  export default {
+    name: 'adminModuleSetting',
+    props: ['module'],
+    components: {
+      Multiselect
+    },
+    data() {
+      return {
+        error: '',
+        max: 10,
+        automatic: true,
+        newsAutomatic: 1,
+        replaceMode: 0,
+        newsNumber: 0,
+        maxActives: 5,
+        replace_options: [
+          { value: 0, text: 'deactive news with least point' },
+          { value: 1, text: 'deactive news with oldest active_since' },
+          { value: 2, text: 'deactive news with oldest create data' }
+        ],
+        categories: [],
+        subCategories: [],
+        selectedCategories: [],
+        selectedSubCategories: []
+      }
+    },
+    created() {
+      this.$axios.$get('/api/categories')
+        .then(data => {
+          this.categories = data.categories;
+	  this.subCategories = [];	
+        }).catch(err => {
+        console.log(err);
+        this.error = 'something went wrong trying to get data from the database'
+      });
+      this.$axios.post('/api/categories/module', {
+        moduleId: this.module.id
+      }).then(data => {
+	console.log(data);
+        for (let i = 0; i < data.data.categories.length; i++) {
+          this.selectedCategories.push(data.data.categories[i].category)
+        }
+        for (let i = 0; i < data.data.subCategories.length; i++) {
+          this.selectedSubCategories.push(data.data.subCategories[i])
+        }
+	this.fetchSubCategories();
+      }).catch(err => {
+        console.log(err);
+        this.error = 'something went wrong trying to get data from the database'
+      });
+
+
+      this.newsNumber = this.module.newsNumber;
+      this.replaceMode = this.module.replaceMode;
+      this.automatic = this.module.automatic ? 'true' : false;
+      this.maxActives = this.module.maxActives;
+      this.newsAutomatic = this.module.newsAutomatic
+
+    },
+    methods: {
+	
+      updateModule() {
+        console.log('update module');
+        let data = {
+          id: this.module.id,
+          automatic: this.automatic,
+          newsNumber: this.newsNumber,
+          replaceMode: this.replaceMode,
+          maxActives: this.maxActives,
+          categories: this.selectedCategories,
+          subCategories: this.selectedSubCategories,
+          newsAutomatic: this.newsAutomatic
+        };
+        this.$axios.post('/api/module/update', data)
+          .then(module => {
+            this.$emit('updateModule', data)
+          }).catch(err => {
+          this.error = 'something went wrong trying to update setting '
+        })
+      },
+	categoryCalledUpdateModule() {
+
+		let out = [];
+
+		console.log("hey subcategories are " + JSON.stringify(this.selectedSubCategories, null, 4));
+    console.log("hey categories are " + JSON.stringify(this.selectedCategories, null, 4));
+
+		for(let i = 0; i < this.selectedSubCategories.length; i++) {
+
+			let del = true;
+
+			for(let j = 0; j < this.selectedCategories.length; j++) {
+
+			  console.log(this.selectedSubCategories[i].categoryId + " " + this.selectedCategories[j].id);
+
+				if(this.selectedSubCategories[i].categoryId == this.selectedCategories[j].id) {
+					del = false;
+					break;
+				}
+			}
+
+			if(!del)
+				out[out.length] = this.selectedSubCategories[i];
+		}
+
+		this.selectedSubCategories = out;
+
+		this.updateModule();
+		this.fetchSubCategories();	
+	},
+	fetchSubCategories() {
+	        this.$axios.post('/api/module/getSubCategories', {"categories": this.selectedCategories})
+        	 .then(subCats => {
+			console.log(JSON.stringify(subCats.data));
+	        	  this.subCategories = subCats.data.subCategories;
+			console.log(JSON.stringify(this.subCategories));
+         	 }).catch(err => {
+         	 this.error = 'something went wrong trying to update setting '
+       	 })
+
+
+
+	}
+
+    }
+  }
+</script>
+
+<style scoped>
+  .label {
+    font-size: 1.2em;
+    padding: 5px;
+  }
+</style>
